@@ -10,36 +10,39 @@ enum LoadingState {
 
 @MainActor
 class WeatherViewModel: ObservableObject {
-    // Данные погоды
+    // Данные погодных компонентов
     @Published var currentWeather: CurrentWeather?
     @Published var forecast: Forecast?
-    @Published var radarData: RadarData?
     @Published var airQuality: AirQuality?
     @Published var alerts: WeatherAlerts?
     
-    // Состояния загрузки
+    // Состояния загрузки для каждого компонента
     @Published var currentWeatherState: LoadingState = .idle
     @Published var forecastState: LoadingState = .idle
-    @Published var radarState: LoadingState = .idle
     @Published var airQualityState: LoadingState = .idle
     @Published var alertsState: LoadingState = .idle
     
+    // Ссылка на текущую задачу для отмены
+    var fetchTask: Task<Void, Never>? = nil
+    
     private let weatherService = WeatherService()
     
-    /// Параллельная загрузка всех компонентов погоды для указанного города
+    /// Параллельная загрузка всех компонентов для заданного города с поддержкой отмены
     func fetchAllWeatherData(for city: String) {
+        // Отменяем предыдущую задачу, если она ещё выполняется
+        fetchTask?.cancel()
+        
         // Устанавливаем все состояния в "loading"
         currentWeatherState = .loading
         forecastState = .loading
-        radarState = .loading
         airQualityState = .loading
         alertsState = .loading
         
-        Task {
+        fetchTask = Task {
             await withTaskGroup(of: (String, Result<Any, Error>).self) { group in
-                let endpoints = ["currentWeather", "forecast", "radar", "airQuality", "alerts"]
+                let endpoints = ["currentWeather", "forecast", "airQuality", "alerts"]
                 
-                // Добавляем задачи для каждого эндпоинта
+                // Добавляем задачи в группу
                 for endpoint in endpoints {
                     group.addTask { [weatherService] in
                         do {
@@ -49,9 +52,6 @@ class WeatherViewModel: ObservableObject {
                                 return (endpoint, .success(data))
                             case "forecast":
                                 let data = try await weatherService.fetchForecast(for: city)
-                                return (endpoint, .success(data))
-                            case "radar":
-                                let data = try await weatherService.fetchRadar(for: city)
                                 return (endpoint, .success(data))
                             case "airQuality":
                                 let data = try await weatherService.fetchAirQuality(for: city)
@@ -68,7 +68,7 @@ class WeatherViewModel: ObservableObject {
                     }
                 }
                 
-                // Обрабатываем результаты по мере их завершения
+                // По мере завершения обрабатываем результаты
                 for await (endpoint, result) in group {
                     switch endpoint {
                     case "currentWeather":
@@ -87,15 +87,6 @@ class WeatherViewModel: ObservableObject {
                             self.forecastState = .loaded
                         case .failure(let error):
                             self.forecastState = .failed(error)
-                        default: break
-                        }
-                    case "radar":
-                        switch result {
-                        case .success(let data as RadarData):
-                            self.radarData = data
-                            self.radarState = .loaded
-                        case .failure(let error):
-                            self.radarState = .failed(error)
                         default: break
                         }
                     case "airQuality":
