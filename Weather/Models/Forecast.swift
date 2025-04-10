@@ -1,6 +1,6 @@
 import Foundation
 
 struct Forecast: Codable, Identifiable {
-    let id = UUID()
+    var id = UUID()
     let summary: String
 }
