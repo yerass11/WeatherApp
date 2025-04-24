@@ -19,7 +19,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         lastLocation = location
-        // Обратное геокодирование для получения названия города
         CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, error in
             if let error = error {
                 DispatchQueue.main.async {
@@ -30,7 +29,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             if let city = placemarks?.first?.locality {
                 DispatchQueue.main.async {
                     self?.cityName = city
-                    self?.locationError = nil // очищаем ошибку, если определение прошло успешно
+                    self?.locationError = nil
                 }
             } else {
                 DispatchQueue.main.async {

@@ -1,6 +1,5 @@
 import Foundation
 
-// Основная структура ответа для текущей погоды
 struct WeatherAPIResponse: Codable {
     let location: WeatherLocation
     let current: WeatherCurrent
@@ -13,6 +12,8 @@ struct WeatherLocation: Codable {
 struct WeatherCurrent: Codable {
     let temp_c: Double
     let condition: WeatherCondition
+    let humidity: Int
+    let air_quality: AirQualityAPI
 }
 
 struct WeatherCondition: Codable {

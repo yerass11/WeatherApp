@@ -10,29 +10,23 @@ enum LoadingState {
 
 @MainActor
 class WeatherViewModel: ObservableObject {
-    // Данные погодных компонентов
     @Published var currentWeather: CurrentWeather?
     @Published var forecast: Forecast?
     @Published var airQuality: AirQuality?
     @Published var alerts: WeatherAlerts?
     
-    // Состояния загрузки для каждого компонента
     @Published var currentWeatherState: LoadingState = .idle
     @Published var forecastState: LoadingState = .idle
     @Published var airQualityState: LoadingState = .idle
     @Published var alertsState: LoadingState = .idle
     
-    // Ссылка на текущую задачу для отмены
     var fetchTask: Task<Void, Never>? = nil
     
     private let weatherService = WeatherService()
     
-    /// Параллельная загрузка всех компонентов для заданного города с поддержкой отмены
     func fetchAllWeatherData(for city: String) {
-        // Отменяем предыдущую задачу, если она ещё выполняется
         fetchTask?.cancel()
         
-        // Устанавливаем все состояния в "loading"
         currentWeatherState = .loading
         forecastState = .loading
         airQualityState = .loading
@@ -42,7 +36,6 @@ class WeatherViewModel: ObservableObject {
             await withTaskGroup(of: (String, Result<Any, Error>).self) { group in
                 let endpoints = ["currentWeather", "forecast", "airQuality", "alerts"]
                 
-                // Добавляем задачи в группу
                 for endpoint in endpoints {
                     group.addTask { [weatherService] in
                         do {
@@ -68,7 +61,6 @@ class WeatherViewModel: ObservableObject {
                     }
                 }
                 
-                // По мере завершения обрабатываем результаты
                 for await (endpoint, result) in group {
                     switch endpoint {
                     case "currentWeather":
@@ -92,6 +84,7 @@ class WeatherViewModel: ObservableObject {
                     case "airQuality":
                         switch result {
                         case .success(let data as AirQuality):
+                            print(data)
                             self.airQuality = data
                             self.airQualityState = .loaded
                         case .failure(let error):
@@ -113,5 +106,5 @@ class WeatherViewModel: ObservableObject {
                 }
             }
         }
-    }
+        }
 }

@@ -15,5 +15,5 @@ struct ForecastDay: Codable {
 
 struct ForecastDayData: Codable {
     let avgtemp_c: Double
-    let condition: WeatherCondition // используем ту же структуру, что и для текущей погоды
+    let condition: WeatherCondition
 }

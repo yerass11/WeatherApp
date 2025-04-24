@@ -1,64 +1,98 @@
 import Foundation
 
 class WeatherService {
-    // Ваш API-ключ от WeatherAPI.com
     private let apiKey = "78307457a0aa4288998153721251004"
-    
-    /// Получение текущей погоды с WeatherAPI.com
-    func fetchCurrentWeather(for city: String) async throws -> CurrentWeather {
-        guard let urlEncodedCity = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.weatherapi.com/v1/current.json?key=\(apiKey)&q=\(urlEncodedCity)&aqi=yes")
-        else {
-            throw URLError(.badURL)
-        }
-        
-        let (data, response) = try await URLSession.shared.data(from: url)
-        // Проверяем, что сервер вернул статус 200
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        let decoder = JSONDecoder()
-        let apiResponse = try decoder.decode(WeatherAPIResponse.self, from: data)
-        // Преобразуем полученные данные в модель нашего приложения
-        let currentWeather = CurrentWeather(
-            temperature: apiResponse.current.temp_c,
-            condition: apiResponse.current.condition.text,
-            cityName: apiResponse.location.name
-        )
-        return currentWeather
+    private let cacheTTL: TimeInterval = 300
+
+    private func cacheKey(for endpoint: String, city: String) -> String {
+        return "\(endpoint)_\(city.lowercased())"
     }
-    
-    /// Получение прогноза (на 3 дня) с WeatherAPI.com
-    func fetchForecast(for city: String) async throws -> Forecast {
-        guard let urlEncodedCity = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.weatherapi.com/v1/forecast.json?key=\(apiKey)&q=\(urlEncodedCity)&days=3&aqi=no&alerts=no")
-        else {
-            throw URLError(.badURL)
+
+    func fetchCurrentWeather(for city: String) async throws -> CurrentWeather {
+        let key = cacheKey(for: "currentWeather", city: city)
+        if let cached: CurrentWeather = WeatherCache.shared.getCachedData(for: key, expiration: cacheTTL) {
+            return cached
         }
-        
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+
+        guard let q = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://api.weatherapi.com/v1/current.json?key=\(apiKey)&q=\(q)&aqi=yes")
+        else { throw URLError(.badURL) }
+
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
-        
-        let decoder = JSONDecoder()
-        let apiResponse = try decoder.decode(ForecastAPIResponse.self, from: data)
-        if let firstDay = apiResponse.forecast.forecastday.first {
-            let summary = "Date: \(firstDay.date), Avg Temp: \(firstDay.day.avgtemp_c)°C, \(firstDay.day.condition.text)"
-            return Forecast(summary: summary)
-        } else {
+        let api = try JSONDecoder().decode(WeatherAPIResponse.self, from: data)
+        let cw = CurrentWeather(
+            temperature: api.current.temp_c,
+            condition: api.current.condition.text,
+            cityName: api.location.name
+        )
+
+        WeatherCache.shared.setCachedData(data: cw, for: key)
+        return cw
+    }
+
+    func fetchForecast(for city: String) async throws -> Forecast {
+        let key = cacheKey(for: "forecast", city: city)
+        if let cached: Forecast = WeatherCache.shared.getCachedData(for: key, expiration: cacheTTL) {
+            return cached
+        }
+
+        guard let q = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://api.weatherapi.com/v1/forecast.json?key=\(apiKey)&q=\(q)&days=3&aqi=no&alerts=no")
+        else { throw URLError(.badURL) }
+
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        let api = try JSONDecoder().decode(ForecastAPIResponse.self, from: data)
+        guard let d = api.forecast.forecastday.first else {
             throw URLError(.cannotParseResponse)
         }
+        let summary = "Date: \(d.date), Avg Temp: \(d.day.avgtemp_c)°C, \(d.day.condition.text)"
+        let f = Forecast(summary: summary)
+
+        WeatherCache.shared.setCachedData(data: f, for: key)
+        return f
     }
-    
+
     func fetchAirQuality(for city: String) async throws -> AirQuality {
-        try await Task.sleep(nanoseconds: 1_500_000_000)
-        return AirQuality(index: 42)
+        let key = cacheKey(for: "airQuality", city: city)
+        if let cached: AirQuality = WeatherCache.shared.getCachedData(for: key, expiration: cacheTTL) {
+            return cached
+        }
+
+        let raw = try await fetchCurrentWeatherRaw(for: city)
+        let apiAQ = raw.current.air_quality
+        let aq = AirQuality(pm25: apiAQ.pm2_5, pm10: apiAQ.pm10, epaIndex: apiAQ.us_epa_index)
+
+        WeatherCache.shared.setCachedData(data: aq, for: key)
+        return aq
     }
-    
+
     func fetchAlerts(for city: String) async throws -> WeatherAlerts {
-        try await Task.sleep(nanoseconds: 1_000_000_000)
-        return WeatherAlerts(message: "No alerts")
+        let key = cacheKey(for: "alerts", city: city)
+        if let cached: WeatherAlerts = WeatherCache.shared.getCachedData(for: key, expiration: cacheTTL) {
+            return cached
+        }
+
+        let al = WeatherAlerts(message: "No alerts")
+
+        WeatherCache.shared.setCachedData(data: al, for: key)
+        return al
+    }
+
+    private func fetchCurrentWeatherRaw(for city: String) async throws -> WeatherAPIResponse {
+        guard let q = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://api.weatherapi.com/v1/current.json?key=\(apiKey)&q=\(q)&aqi=yes")
+        else { throw URLError(.badURL) }
+
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(WeatherAPIResponse.self, from: data)
     }
 }

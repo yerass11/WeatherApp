@@ -3,13 +3,12 @@ import SwiftUI
 struct WeatherView: View {
     @StateObject var viewModel = WeatherViewModel()
     @StateObject var locationManager = LocationManager()
-    @State private var city: String = "Moscow"  // Значение по умолчанию
+    @State private var city: String = "Moscow"
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Если произошла ошибка определения местоположения, выводим сообщение
                     if let error = locationManager.locationError {
                         Text("Ошибка определения местоположения: \(error.localizedDescription)")
                             .foregroundColor(.red)
@@ -17,18 +16,15 @@ struct WeatherView: View {
                             .padding(.horizontal)
                     }
                     
-                    // Если удалось определить город, выводим его
                     if !locationManager.cityName.isEmpty {
                         Text("Определено местоположение: \(locationManager.cityName)")
                             .foregroundColor(.blue)
                     }
                     
-                    // Поле для ввода города
                     TextField("Введите город", text: $city)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .padding(.horizontal)
                     
-                    // Кнопка для использования определённого местоположения
                     Button("Использовать моё местоположение") {
                         if !locationManager.cityName.isEmpty {
                             city = locationManager.cityName
@@ -36,13 +32,11 @@ struct WeatherView: View {
                     }
                     .padding()
                     
-                    // Кнопка для запроса погоды
                     Button("Обновить погоду") {
                         viewModel.fetchAllWeatherData(for: city)
                     }
                     .padding()
                     
-                    // Пример секции для текущей погоды
                     weatherSection(title: "Текущая погода", state: viewModel.currentWeatherState) {
                         if let weather = viewModel.currentWeather {
                             VStack {
@@ -56,7 +50,6 @@ struct WeatherView: View {
                         }
                     }
                     
-                    // Прогноз с навигацией на подробное представление
                     weatherSection(title: "Прогноз", state: viewModel.forecastState) {
                         if let forecast = viewModel.forecast {
                             NavigationLink(destination: ForecastDetailView(forecast: forecast)) {
@@ -68,9 +61,13 @@ struct WeatherView: View {
                     
                     
                     weatherSection(title: "Качество воздуха", state: viewModel.airQualityState) {
-                        if let airQuality = viewModel.airQuality {
-                            Text("Индекс качества: \(airQuality.index)")
-                                .font(.body)
+                        if let a = viewModel.airQuality {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("EPA-index: \(a.epaIndex)")
+                                Text("PM2.5: \(String(format: "%.1f", a.pm25)) µg/m³")
+                                Text("PM10: \(String(format: "%.1f", a.pm10)) µg/m³")
+                            }
+                            .font(.body)
                         }
                     }
                     
